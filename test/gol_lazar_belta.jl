@@ -21,31 +21,36 @@ using Dionysos
             system.ext[:q_T],
             N
         )
+        optimizer = MOI.instantiate(algo)
+        MOI.set(optimizer, MOI.RawParameter("problem"), problem)
         @info("Solving... depth: $N")
-        @time xu = optimal_control(problem, algo)
+        @time MOI.optimize!(optimizer)
         @info("Solved.")
         if x_expected === nothing
-            @test xu === nothing
+            @test MOI.get(optimizer, MOI.TerminationStatus()) == MOI.INFEASIBLE
         else
-            @test xu !== nothing
-            @test typeof(x_expected) == typeof(xu[1].x)
-            @test typeof(u_expected) == typeof(xu[1].u)
+            @test MOI.get(optimizer, MOI.TerminationStatus()) == MOI.OPTIMAL
+            xu = MOI.get(optimizer, ContinuousTrajectoryAttribute())
+            @test typeof(x_expected) == typeof(xu.x)
+            @test typeof(u_expected) == typeof(xu.u)
             if isempty(x_expected)
                 @test isempty(u_expected)
-                @test isempty(xu[1].x)
-                @test isempty(xu[1].u)
+                @test isempty(xu.x)
+                @test isempty(xu.u)
             else
-                @test xu[1].x ≈ x_expected atol=1e-2
-                @test xu[1].u ≈ u_expected atol=1e-2
+                @test xu.x ≈ x_expected atol=1e-2
+                @test xu.u ≈ u_expected atol=1e-2
             end
-            @test xu[2] ≈ obj_expected atol=1e-2
+            @test MOI.get(optimizer, MOI.ObjectiveValue()) ≈ obj_expected atol=1e-2
         end
     end
     function tests(qp_solver, miqp_solver)
         # Pavito does not support indicator constraints yet so we use `false` here
         @testset "$(typeof(algo))" for algo in [
-            BemporadMorari(qp_solver, miqp_solver, false, 0),
-            BranchAndBound(qp_solver, miqp_solver, max_iter = 1111)
+            optimizer_with_attributes(BemporadMorari.Optimizer, "continuous_solver" => qp_solver, "mixed_integer_solver" => miqp_solver,
+                                     "indicator" => false, "log_level" => 0),
+            optimizer_with_attributes(BranchAndBound.Optimizer, "continuous_solver" => qp_solver, "mixed_integer_solver" => miqp_solver,
+                                     "max_iter" => 1111)
         ]
             @testset "Depth: 0" begin
             _test(algo, 0, 18, [0.0, 1.0], nothing, nothing, nothing, true, false)

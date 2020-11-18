@@ -1,22 +1,48 @@
 export BranchAndBound
 
-using DataStructures # for BinaryMinHeap
+module BranchAndBound
 
-struct BranchAndBound{C, M, V<:AbstractVector{Int}}
-    continuous_solver::C
-    mixed_integer_solver::M
+using DataStructures # for BinaryMinHeap
+using JuMP, Polyhedra
+using HybridSystems
+using Dionysos
+
+mutable struct Optimizer <: MOI.AbstractOptimizer
+    continuous_solver
+    mixed_integer_solver
     horizon::Int
     indicator::Bool
     log_level::Int
-    log_iter::V
+    log_iter::AbstractVector{Int}
     max_iter::Int
     max_time::Float64
-    rel_gap::Float64
     feasible_solution_callback::Union{Nothing, Function}
+    problem::Union{Nothing, OptimalControlProblem}
+    status::MOI.TerminationStatusCode
+    upper_bound::Float64
+    solve_time::Float64
+    num_total::Int
+    num_iter::Int
+    num_done::Int
+    num_pruned_bound::Int
+    num_pruned_inf::Int
+    best_traj::Union{Nothing, ContinuousTrajectory}
+    function Optimizer()
+        return new(
+            nothing, nothing,
+            0, false, 1, 0:100:typemax(Int),
+            1000, 60.0, nothing, nothing,
+            MOI.OPTIMIZE_NOT_CALLED, NaN, NaN, 0, 0, 0, 0, 0, nothing)
+    end
 end
-function BranchAndBound(continuous_solver, mixed_integer_solver; horizon=0, max_iter=1000, max_time=60.0, rel_gap=1e-3, indicator::Bool = false, log_level = 1, log_iter = 0:100:max_iter,
-                        feasible_solution_callback = nothing)
-    return BranchAndBound(continuous_solver, mixed_integer_solver, horizon, indicator, log_level, log_iter, max_iter, max_time, rel_gap, feasible_solution_callback)
+
+MOI.is_empty(optimizer::Optimizer) = optimizer.problem === nothing
+
+function MOI.set(model::Optimizer, param::MOI.RawParameter, value)
+    setproperty!(model, Symbol(param.name), value)
+end
+function MOI.get(model::Optimizer, param::MOI.RawParameter)
+    getproperty(model, Symbol(param.name))
 end
 
 struct Candidate{T, TT}
@@ -42,16 +68,18 @@ function minimum_transition_cost(prob, transition, solver, log_level = 0)
     @variable(model, x0[1:statedim(prob.system, from)] in hrep(stateset(prob.system, from)))
     @variable(model, x1[1:statedim(prob.system, to)] in hrep(stateset(prob.system, to)))
     @variable(model, u[1:inputdim(resetmap(prob.system, transition))])
-    # We set `indicator` to `true`, there is no integer variables anyway so it does not matter.
-    algo = BemporadMorari(solver, solver, true, 0)
+    algo = optimizer_with_attributes(
+        BemporadMorari.Optimizer,
+        "continuous_solver" => solver,
+        "log_level" => 0)
     # We use `1` as we asssume the cost is the same along time
     t = 1
-    δ_mode = IndicatorVariables([to], t)
-    state_cost, δ_mode = hybrid_cost(model, fillify(prob.state_cost[t][[to]]), x1, u, δ_mode)
+    δ_mode = BemporadMorari.IndicatorVariables([to], t)
+    state_cost, δ_mode = BemporadMorari.hybrid_cost(model, BemporadMorari.fillify(prob.state_cost[t][[to]]), x1, u, δ_mode)
     symbols = [symbol(prob.system, transition)]
-    δ_trans = IndicatorVariables(symbols, t)
-    δ_trans = hybrid_constraints(model, fillify(prob.system.resetmaps[symbols]), x0, x1, u, algo, δ_trans)
-    trans_cost, δ_trans = hybrid_cost(model, fillify(prob.transition_cost[t][symbols]), x0, u, δ_trans)
+    δ_trans = BemporadMorari.IndicatorVariables(symbols, t)
+    δ_trans = BemporadMorari.hybrid_constraints(model, BemporadMorari.fillify(prob.system.resetmaps[symbols]), x0, x1, u, algo, δ_trans)
+    trans_cost, δ_trans = BemporadMorari.hybrid_cost(model, BemporadMorari.fillify(prob.transition_cost[t][symbols]), x0, u, δ_trans)
     @objective(model, Min, state_cost + trans_cost)
     optimize!(model)
     if termination_status(model) == MOI.OPTIMAL
@@ -99,35 +127,51 @@ function distances(prob, solver)
 end
 
 function candidate(prob, algo, discrete_lb, traj)
-    sub_algo = BemporadMorari(algo.continuous_solver, algo.mixed_integer_solver, algo.indicator, algo.log_level)
+    sub_algo = optimizer_with_attributes(
+        BemporadMorari.Optimizer,
+        "continuous_solver" => algo.continuous_solver,
+        "mixed_integer_solver" => algo.mixed_integer_solver,
+        "indicator" => algo.indicator,
+        "log_level" => algo.log_level
+    )
     modes = [[target(prob.system, t)] for t in traj.transitions]
     cont_traj_prob = OptimalControlProblem(
         prob.system, prob.q_0, prob.x_0,
         prob.state_cost[1:length(traj)], prob.transition_cost[1:length(traj)],
         last_mode(prob.system, traj), length(traj)
     )
-    sol = optimal_control(cont_traj_prob, sub_algo, modes)
-    sol === nothing && return
+    start_optimizer = MOI.instantiate(sub_algo)
+    MOI.set(start_optimizer, MOI.RawParameter("modes"), modes)
+    MOI.set(start_optimizer, MOI.RawParameter("problem"), cont_traj_prob)
+    MOI.optimize!(start_optimizer)
+    if MOI.get(start_optimizer, MOI.TerminationStatus()) != MOI.OPTIMAL
+        return
+    end
     left = prob.number_of_time_steps - length(traj)
-    lb = sol[2] + discrete_lb[left, last_mode(prob.system, traj)]
+    lb = MOI.get(start_optimizer, MOI.ObjectiveValue()) + discrete_lb[left, last_mode(prob.system, traj)]
+    start_sol = MOI.get(start_optimizer, ContinuousTrajectoryAttribute())
     if left <= algo.horizon || false # prob.allow_less_iterations
         horizon_prob = OptimalControlProblem(
-            prob.system, last_mode(prob.system, traj), length(traj) == 0 ? prob.x_0 : sol[1].x[end],
+            prob.system, last_mode(prob.system, traj), length(traj) == 0 ? prob.x_0 : start_sol.x[end],
             prob.state_cost[(length(traj) + 1):end], prob.transition_cost[(length(traj) + 1):end],
             prob.q_T, min(left, algo.horizon)
         )
-        sol_horizon = optimal_control(horizon_prob, sub_algo)
+        horizon_optimizer = MOI.instantiate(sub_algo)
+        MOI.set(horizon_optimizer, MOI.RawParameter("problem"), horizon_prob)
+        MOI.optimize!(horizon_optimizer)
+        status_horizon = MOI.get(horizon_optimizer, MOI.PrimalStatus())
     else
-        sol_horizon = nothing
+        status_horizon = MOI.NO_SOLUTION
     end
-    if sol_horizon === nothing
+    if status_horizon == MOI.NO_SOLUTION
         ub = Inf
         sol_traj = nothing
     else
-        ub = sol[2] + sol_horizon[2]
+        ub = MOI.get(start_optimizer, MOI.ObjectiveValue()) + MOI.get(horizon_optimizer, MOI.ObjectiveValue())
+        sol_horizon = MOI.get(horizon_optimizer, ContinuousTrajectoryAttribute())
         sol_traj = ContinuousTrajectory(
-            [sol[1].x; sol_horizon[1].x],
-            [sol[1].u; sol_horizon[1].u]
+            [start_sol.x; sol_horizon.x],
+            [start_sol.u; sol_horizon.u]
         )
     end
     return Candidate(lb, ub, traj), sol_traj
@@ -140,21 +184,22 @@ const NUM_NODES = [
 ]
 
 # Inspired from Pavito's `printgap`
-function print_info(last_iter::Bool, log_level, log_iter, num_iter, ub, start_time,
-                    num_nodes...)
-    num_nodes = (num_nodes..., 2num_nodes[1] - sum(num_nodes))
+function print_info(optimizer::Optimizer, last_iter::Bool, start_time, num_queued)
+    num_nodes = [optimizer.num_total, num_queued, optimizer.num_done,
+                 optimizer.num_pruned_bound, optimizer.num_pruned_inf]
+    push!(num_nodes, 2optimizer.num_total - sum(num_nodes))
     @assert num_nodes[end] >= 0
-    if log_level >= 1
+    if optimizer.log_level >= 1
         len = max(maximum(length, NUM_NODES), length(string(num_nodes[1])))
-        if num_iter == 0 || log_level >= 2
+        if optimizer.num_iter == 0 || optimizer.log_level >= 2
             @printf "\n%-5s | %-14s | %-11s" "Iter." "Best feasible" "Time (s)"
             for s in NUM_NODES
                 print(" | ", lpad(s, len))
             end
             println()
         end
-        if last_iter || (num_iter in log_iter)
-            @printf "%5d | %+14.6e | %11.3e" num_iter ub (time() - start_time)
+        if last_iter || (optimizer.num_iter in optimizer.log_iter)
+            @printf "%5d | %+14.6e | %11.3e" optimizer.num_iter optimizer.upper_bound (time() - start_time)
             for num in num_nodes
                 print(" | ", lpad(string(num), len))
             end
@@ -166,56 +211,72 @@ function print_info(last_iter::Bool, log_level, log_iter, num_iter, ub, start_ti
     return
 end
 
-function optimal_control(
-    prob::OptimalControlProblem,
-    algo::BranchAndBound
-)
+function MOI.optimize!(optimizer::Optimizer)
     start_time = time()
-    iszero(prob.number_of_time_steps) && return _zero_steps(prob)
+    prob = optimizer.problem
+    if iszero(prob.number_of_time_steps)
+        if optimizer.problem.q_T == optimizer.problem.q_0
+            optimizer.status = MOI.OPTIMAL
+            optimizer.best_traj = ContinuousTrajectory(Vector{Float64}[], Vector{Float64}[])
+            optimizer.upper_bound = 0.0
+        else
+            optimizer.status = MOI.INFEASIBLE
+        end
+        return
+    end
     num_nodes = number_of_nodes(prob)
-    num_total = num_nodes[prob.number_of_time_steps, prob.q_0]
-    iszero(num_total) && return
-    discrete_lb = distances(prob, algo.continuous_solver)
-    candidate_0, best_traj = candidate(prob, algo, discrete_lb, DiscreteTrajectory{transitiontype(prob.system)}(prob.q_0))
+    optimizer.num_total = num_nodes[prob.number_of_time_steps, prob.q_0]
+    if iszero(optimizer.num_total)
+        optimizer.status = MOI.INFEASIBLE
+        return
+    end
+    discrete_lb = distances(prob, optimizer.continuous_solver)
+    candidate_0, optimizer.best_traj = candidate(prob, optimizer, discrete_lb, DiscreteTrajectory{transitiontype(prob.system)}(prob.q_0))
     candidate_0 === nothing && return
-    ub = candidate_0.upper_bound
-    num_iter = 0
+    optimizer.upper_bound = candidate_0.upper_bound
+    optimizer.num_iter = 0
     candidates = BinaryMinHeap([candidate_0])
-    num_done = 0
-    num_pruned_bound = 0
-    num_pruned_inf = 0
+    optimizer.num_done = 0
+    optimizer.num_pruned_bound = 0
+    optimizer.num_pruned_inf = 0
     while true
-        stop = isempty(candidates) || num_iter >= algo.max_iter || time() - start_time >= algo.max_time
-        print_info(stop, algo.log_level, algo.log_iter, num_iter, ub, start_time,
-                   num_total, length(candidates), num_done, num_pruned_bound, num_pruned_inf)
+        if isempty(candidates)
+            optimizer.status = optimizer.best_traj === nothing ? MOI.INFEASIBLE : MOI.OPTIMAL
+        elseif optimizer.num_iter >= optimizer.max_iter
+            optimizer.status = MOI.ITERATION_LIMIT
+        elseif time() - start_time >= optimizer.max_time
+            optimizer.status = MOI.TIME_LIMIT
+        end
+        stop = optimizer.status != MOI.OPTIMIZE_NOT_CALLED
+        print_info(optimizer, stop, start_time, length(candidates))
         stop && break
-        num_iter += 1
+        optimizer.num_iter += 1
         cur_candidate = pop!(candidates)
-        if cur_candidate.lower_bound < ub
+        if cur_candidate.lower_bound < optimizer.upper_bound
             for t in out_transitions(prob.system, last_mode(prob.system, cur_candidate.traj))
-                new_traj = append(cur_candidate.traj, t)
+                new_traj = Dionysos.append(cur_candidate.traj, t)
                 # Shortcuts avoiding to solve the QP in case, it's infeasible.
                 nnodes = num_nodes[prob.number_of_time_steps - length(new_traj), last_mode(prob.system, new_traj)]
                 iszero(nnodes) && continue
-                new_candidate_traj = candidate(prob, algo, discrete_lb, new_traj)
+                new_candidate_traj = candidate(prob, optimizer, discrete_lb, new_traj)
                 if new_candidate_traj === nothing
-                    num_pruned_inf += nnodes - 1
-                    num_done += 1
+                    optimizer.num_pruned_inf += nnodes - 1
+                    optimizer.num_done += 1
                 else
                     new_candidate, sol_traj = new_candidate_traj
-                    if new_candidate.upper_bound < ub
-                        if algo.feasible_solution_callback !== nothing
-                            algo.feasible_solution_callback(new_candidate, sol_traj)
+                    if new_candidate.upper_bound < optimizer.upper_bound
+                        if optimizer.feasible_solution_callback !== nothing
+                            optimizer.feasible_solution_callback(new_candidate, sol_traj)
                         end
-                        best_traj = sol_traj
-                        ub = new_candidate.upper_bound
+                        optimizer.best_traj = sol_traj
+                        optimizer.upper_bound = new_candidate.upper_bound
                     end
                     if length(new_candidate.traj) < prob.number_of_time_steps
-                        if new_candidate.lower_bound < ub
+                        if new_candidate.lower_bound < optimizer.upper_bound
                             push!(candidates, new_candidate)
                         else
-                            num_pruned_bound += nnodes - 1
-                            num_done += 1
+                            optimizer.num_pruned_bound += nnodes - 1
+                            optimizer.num_done += 1
                         end
                     end
                 end
@@ -223,10 +284,20 @@ function optimal_control(
         else
             left = prob.number_of_time_steps - length(cur_candidate.traj)
             nnodes = num_nodes[left, last_mode(prob.system, cur_candidate.traj)]
-            num_pruned_bound += nnodes - 1
+            optimizer.num_pruned_bound += nnodes - 1
         end
-        num_done += 1
+        optimizer.num_done += 1
     end
-    best_traj === nothing && return
-    return best_traj, ub
+end
+
+function MOI.get(optimizer::Optimizer, ::ContinuousTrajectoryAttribute)
+    return optimizer.best_traj
+end
+function MOI.get(optimizer::Optimizer, ::MOI.ObjectiveValue)
+    return optimizer.upper_bound
+end
+function MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus)
+    return optimizer.status
+end
+
 end
