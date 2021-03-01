@@ -3,7 +3,6 @@ include("../partition.jl")
 using StaticArrays,LazySets
 using Main.PartitionAbstraction
 PA = PartitionAbstraction
-
 a = 3
 b = 1
 function build_zonotopes()
@@ -84,10 +83,13 @@ function build_domain_partition()
     c = [0.0, 0.0]; r = [5.0*a, 10.0*b]
     X = Hyperrectangle(c, r)
     Z = build_zonotopes()
+    PA.plot_partition(PA.Partition{AbstractPolytope}(X,Z);save="partition1.png")
     v = PA.get_vertices(X,Z)
+    sort!(v)
     CZ = build_constrainedZonotopes(v)
     L = [Z...,CZ...]
     D = PA.Partition{AbstractPolytope}(X,L)
+    PA.plot_partition(D;save="partition2.png")
     return D_e = PA.expansion(1.2,D) #1.1
 end
 
@@ -100,14 +102,14 @@ end
 function test1()
     # build the domain partition
     D = build_domain_partition()
-    PA.plot_partition(D)
+    PA.plot_partition(D;save="partition3.png")
 
     # build the obstacles
     O = build_obstacles()
 
     #build the toplogical graph
     A = PA.topological_graph(D,O)
-    PA.plot_topological_graph(D,A,O)
+    PA.plot_topological_graph(D,A,O;save = "partition6.png")
 
     # definition of the system
     contsys = build_system()
@@ -127,8 +129,8 @@ function test1()
     trajectory = PA.trajectory_reach_full(contsys,control_list,x0; randchoose = false)
 
     print_ntransitions(control_list)
-    PA.print_trajectory_full(control_list,trajectory;full=false,partition=D,obstacles=O)
-    PA.print_trajectory_full(control_list,trajectory;full=true,obstacles=O,X0=X0,Xf=Xf)
+    PA.print_trajectory_full(control_list,[];full=false,partition=D,obstacles=O)
+    #PA.print_trajectory_full(control_list,trajectory;full=true,obstacles=O,X0=X0,Xf=Xf)
 
 end
 
@@ -164,8 +166,8 @@ function test2()
     trajectory = PA.trajectory_reach_full(contsys,control_list,x0; randchoose = false)
 
     print_ntransitions(control_list)
-    PA.print_trajectory_full(control_list,trajectory;full=false,partition=D,obstacles=O)
-    PA.print_trajectory_full(control_list,trajectory;full=true,obstacles=O,X0=X0,Xf=Xf)
+    PA.print_trajectory_full(control_list,[];full=false,partition=D,obstacles=O,X0=Xf,Xf=X0,save="partition8.png")
+    PA.print_trajectory_full(control_list,trajectory;full=true,obstacles=O,X0=X0,Xf=Xf,save="partition7.png")
 
 end
 
@@ -173,5 +175,5 @@ println()
 println()
 println("START TEST")
 
-test1()
-#test2()
+#test1()
+test2()
