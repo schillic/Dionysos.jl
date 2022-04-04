@@ -181,6 +181,8 @@ function compute_reachable_set(rect::AB.HyperRectangle,contsys,Udom)
         lb = min.(lb,Fx .- Fr)
         ub = max.(ub,Fx .+ Fr)
     end
+    lb = SVector{n}(lb)
+    ub = SVector{n}(ub)
     return AB.HyperRectangle(lb,ub)
 end
 

@@ -1,3 +1,5 @@
+using Plots
+
 abstract type SymbolicModel{N,M} end
 
 mutable struct SymbolicModelList{N,M,S1<:Domain{N},S2<:Domain{M},A} <: SymbolicModel{N,M}
@@ -9,6 +11,8 @@ mutable struct SymbolicModelList{N,M,S1<:Domain{N},S2<:Domain{M},A} <: SymbolicM
     upos2int::Dict{NTuple{M,Int},Int}
     uint2pos::Vector{NTuple{M,Int}}
 end
+
+
 
 # ListList refers to List for SymbolicModel, and List for automaton
 function NewSymbolicModelListList(Xdom, Udom, ::Type{S} = SortedTupleSet{3,Int}) where {S}
