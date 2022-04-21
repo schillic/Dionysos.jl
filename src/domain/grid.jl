@@ -4,6 +4,7 @@ using PyPlot, CDDLib
 
 abstract type Grid{N,T} end
 
+
 # Free because later: maybe put bounds lb and ub (e.g., for BDDs)
 struct GridFree{N,T} <: Grid{N,T}
     orig::SVector{N,T}
@@ -18,16 +19,16 @@ function get_coord_by_pos(grid, pos)
     return grid.orig + pos.*grid.h
 end
 
-function get_pos_lims_inner(grid::Grid{N}, rect) where N
-    lbI = ntuple(i -> ceil(Int, (rect.lb[i] - grid.orig[i])/grid.h[i] + 0.5), Val(N))
-    ubI = ntuple(i -> floor(Int, (rect.ub[i] - grid.orig[i])/grid.h[i] - 0.5), Val(N))
-    return HyperRectangle(lbI, ubI)
+function get_pos_lims_inner(grid::Grid{N}, rect; tol=0.0) where N
+    lbI = ntuple(i -> ceil(Int, (rect.lb[i] - tol - grid.orig[i])/grid.h[i] + 0.5), Val(N))
+    ubI = ntuple(i -> floor(Int, (rect.ub[i] + tol - grid.orig[i])/grid.h[i] - 0.5), Val(N))
+    return UT.HyperRectangle(lbI, ubI)
 end
 
-function get_pos_lims_outer(grid::Grid{N}, rect; tol=1e-6) where N
+function get_pos_lims_outer(grid::Grid{N}, rect; tol=0.0) where N
     lbI = ntuple(i -> ceil(Int, (rect.lb[i] + tol - grid.orig[i])/grid.h[i] - 0.5), Val(N))
     ubI = ntuple(i -> floor(Int, (rect.ub[i] - tol - grid.orig[i])/grid.h[i] + 0.5), Val(N))
-    return HyperRectangle(lbI, ubI)
+    return UT.HyperRectangle(lbI, ubI)
 end
 
 function get_pos_lims(grid, rect, incl_mode::INCL_MODE)
@@ -38,7 +39,7 @@ function get_pos_lims(grid, rect, incl_mode::INCL_MODE)
     end
 end
 
-function _ranges(rect::HyperRectangle{NTuple{N,T}}) where {N,T}
+function _ranges(rect::UT.HyperRectangle{NTuple{N,T}}) where {N,T}
     return ntuple(i -> UnitRange(rect.lb[i], rect.ub[i]), Val(N))
 end
 
@@ -55,7 +56,7 @@ end
 function get_rec(grid::GridFree, pos)
     x = get_coord_by_pos(grid, pos)
     r = grid.h/2.0
-    return HyperRectangle(x-r, x+r)
+    return UT.HyperRectangle(x-r, x+r)
 end
 
 function get_dim(grid::GridFree)
@@ -72,15 +73,20 @@ end
 
 function get_volume(grid::GridFree)
     r = get_h(grid)/2.0
-    return volume(HyperRectangle(-r,r))
+    return UT.volume(UT.HyperRectangle(-r,r))
 end
 ######################################################### deformed grid in 2D
 
-# f is a non linear inversibl function
+# f is an inversible function
 struct DeformedGrid{N,T} <: Grid{N,T}
     grid::GridFree{N,T}
     f::Function
     fi::Function
+    A
+end
+
+function DeformedGrid(grid::GridFree{N,T},f::Function,fi::Function;A=nothing) where {N,T}
+    return DeformedGrid(grid,f,fi,A)
 end
 
 function get_pos_by_coord(Dgrid::DeformedGrid{N}, x) where N
@@ -89,6 +95,36 @@ end
 
 function get_coord_by_pos(Dgrid::DeformedGrid{N}, pos) where N
     return Dgrid.f(get_coord_by_pos(Dgrid.grid, pos))
+end
+
+function get_pos_lims_inner(Dgrid::DeformedGrid{N}, rect; tol=1e-6) where N
+    return get_pos_lims_inner(Dgrid.grid, rect; tol=tol)
+end
+
+function get_pos_lims_outer(Dgrid::DeformedGrid{N}, rect; tol=1e-6) where N
+    return get_pos_lims_outer(Dgrid.grid, rect; tol=tol)
+end
+
+function get_dim(Dgrid::DeformedGrid)
+    return get_dim(Dgrid.grid)
+end
+
+function get_h(Dgrid::DeformedGrid)
+    return get_h(Dgrid.grid)
+end
+
+function get_origin(Dgrid::DeformedGrid)
+    return get_origin(Dgrid.grid)
+end
+
+# only for linear transformation of the grid
+function get_volume(Dgrid::DeformedGrid)
+    if Dgrid.A!=nothing
+        return abs(det(Dgrid.A))* get_volume(Dgrid.grid)
+    else
+        return get_volume(Dgrid.grid)
+    #error("volume is state-dependant for nonlinear transformation")
+    end
 end
 
 function plot_deformed_rectangle!(rec,f;dims=[1,2],opacity=0.9,color=:yellow,N=2)
@@ -117,24 +153,4 @@ end
 function plot_elem!(Dgrid::DeformedGrid, pos; dims=[1,2], opacity=1.0, color=:yellow, N=8)
     rec = get_rec(Dgrid.grid,pos)
     plot_deformed_rectangle!(rec,Dgrid.f;dims=dims,opacity=opacity,color=color, N=N)
-end
-
-function get_pos_lims_inner(Dgrid::DeformedGrid{N}, rect; tol=1e-6) where N
-    return get_pos_lims_inner(Dgrid.grid, rect; tol=tol)
-end
-
-function get_pos_lims_outer(Dgrid::DeformedGrid{N}, rect; tol=1e-6) where N
-    return get_pos_lims_outer(Dgrid.grid, rect; tol=tol)
-end
-
-function get_dim(Dgrid::DeformedGrid)
-    return get_dim(Dgrid.grid)
-end
-
-function get_h(Dgrid::DeformedGrid)
-    return get_h(Dgrid.grid)
-end
-
-function get_origin(Dgrid::DeformedGrid)
-    return get_origin(Dgrid.grid)
 end

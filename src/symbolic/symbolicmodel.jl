@@ -2,7 +2,7 @@ using Plots
 
 abstract type SymbolicModel{N,M} end
 
-struct SymbolicModelList{N,M,S1<:Domain{N},S2<:Domain{M},A<:HybridSystems.AbstractAutomaton} <: SymbolicModel{N,M}
+mutable struct SymbolicModelList{N,M,S1<:DO.DomainType{N},S2<:DO.DomainType{M},A} <: SymbolicModel{N,M}
     Xdom::S1
     Udom::S2
     autom::A
@@ -15,16 +15,28 @@ end
 
 
 # ListList refers to List for SymbolicModel, and List for automaton
-function NewSymbolicModelListList(Xdom, Udom)
-    nx = get_ncells(Xdom)
-    nu = get_ncells(Udom)
-    xint2pos = [pos for pos in enum_pos(Xdom)]
-    xpos2int = Dict((pos, i) for (i, pos) in enumerate(enum_pos(Xdom)))
-    uint2pos = [pos for pos in enum_pos(Udom)]
-    upos2int = Dict((pos, i) for (i, pos) in enumerate(enum_pos(Udom)))
-    autom = NewAutomatonList(nx, nu)
+function NewSymbolicModelListList(Xdom, Udom, ::Type{S} = UT.SortedTupleSet{3,Int}) where {S}
+    nx = DO.get_ncells(Xdom)
+    nu = DO.get_ncells(Udom)
+    xint2pos = [pos for pos in DO.enum_pos(Xdom)]
+    xpos2int = Dict((pos, i) for (i, pos) in enumerate(DO.enum_pos(Xdom)))
+    uint2pos = [pos for pos in DO.enum_pos(Udom)]
+    upos2int = Dict((pos, i) for (i, pos) in enumerate(DO.enum_pos(Udom)))
+    autom = AutomatonList{S}(nx, nu)
     return SymbolicModelList(
         Xdom, Udom, autom, xpos2int, xint2pos, upos2int, uint2pos)
+end
+
+function with_automaton(symmodel::SymbolicModelList, autom)
+    return SymbolicModelList(
+        symmodel.Xdom,
+        symmodel.Udom,
+        autom,
+        symmodel.xpos2int,
+        symmodel.xint2pos,
+        symmodel.upos2int,
+        symmodel.uint2pos,
+    )
 end
 
 function get_xpos_by_state(symmodel::SymbolicModelList, state)
@@ -43,13 +55,17 @@ function get_symbol_by_upos(symmodel::SymbolicModelList, upos)
     return symmodel.upos2int[upos]
 end
 
+function enum_cells(symmodel::SymbolicModelList)
+    return 1:length(symmodel.xint2pos)
+end
+
 # Assumes that automaton is "empty"
 # Compare to OLD implementation (see below), we do not make a first check before:
 # we go through the list only once; this requires to store the transitions in a
 # vector (translist). This approach uses a bit more allocations than the OLD one
 # (29 vs 24/26) on pathplanning-simple/hard but is faster in both cases.
 function compute_symmodel_from_controlsystem!(symmodel::SymbolicModel{N},
-        contsys::ControlSystemGrowth{N}) where N
+        contsys::SY.ControlSystemGrowth{N}) where N
     println("compute_symmodel_from_controlsystem! started")
     Xdom = symmodel.Xdom
     Udom = symmodel.Udom
@@ -62,17 +78,17 @@ function compute_symmodel_from_controlsystem!(symmodel::SymbolicModel{N},
     # Updates every 1 seconds
     # Commented because it changes the number of allocations
     # @showprogress 1 "Computing symbolic control system: " (
-    for upos in enum_pos(Udom)
+    for upos in DO.enum_pos(Udom)
         symbol = get_symbol_by_upos(symmodel, upos)
-        u = get_coord_by_pos(Udom.grid, upos)
+        u = DO.get_coord_by_pos(Udom.grid, upos)
         Fr = contsys.growthbound_map(r, u, contsys.tstep) + contsys.measnoise
-        for xpos in enum_pos(Xdom)
+        for xpos in DO.enum_pos(Xdom)
             empty!(translist)
             source = get_state_by_xpos(symmodel, xpos)
-            x = get_coord_by_pos(Xdom.grid, xpos)
+            x = DO.get_coord_by_pos(Xdom.grid, xpos)
             Fx = contsys.sys_map(x, u, tstep)
-            rectI = get_pos_lims_outer(Xdom.grid, HyperRectangle(Fx - Fr, Fx + Fr))
-            ypos_iter = Iterators.product(_ranges(rectI)...)
+            rectI = DO.get_pos_lims_outer(Xdom.grid, UT.HyperRectangle(Fx - Fr, Fx + Fr))
+            ypos_iter = Iterators.product(DO._ranges(rectI)...)
             allin = true
             for ypos in ypos_iter
                 if !(ypos in Xdom)
@@ -95,7 +111,7 @@ end
 
 # Assumes that automaton is "empty"
 function compute_symmodel_from_controlsystem_OLD!(symmodel::SymbolicModel{N},
-        contsys::ControlSystemGrowth{N}) where N
+        contsys::SY.ControlSystemGrowth{N}) where N
     println("compute_symmodel_from_controlsystem! started")
     Xdom = symmodel.Xdom
     Udom = symmodel.Udom
@@ -108,16 +124,16 @@ function compute_symmodel_from_controlsystem_OLD!(symmodel::SymbolicModel{N},
 
     # Updates every 1 seconds
     # @showprogress 1 "Computing symbolic control system: " (
-    for upos in enum_pos(Udom)
+    for upos in DO.enum_pos(Udom)
         symbol = get_symbol_by_upos(symmodel, upos)
-        u = get_coord_by_pos(Udom.grid, upos)
+        u = DO.get_coord_by_pos(Udom.grid, upos)
         Fr = contsys.growthbound_map(r, u, contsys.tstep) + contsys.measnoise
-        for xpos in enum_pos(Xdom)
+        for xpos in DO.enum_pos(Xdom)
             source = get_state_by_xpos(symmodel, xpos)
-            x = get_coord_by_pos(Xdom.grid, xpos)
+            x = DO.get_coord_by_pos(Xdom.grid, xpos)
             Fx = contsys.sys_map(x, u, tstep)
-            rectI = get_pos_lims_outer(Xdom.grid, HyperRectangle(Fx - Fr, Fx + Fr))
-            ypos_iter = Iterators.product(_ranges(rectI)...)
+            rectI = DO.get_pos_lims_outer(Xdom.grid, UT.HyperRectangle(Fx - Fr, Fx + Fr))
+            ypos_iter = Iterators.product(DO._ranges(rectI)...)
             any(not_in_Xdom, ypos_iter) && continue
             for ypos in ypos_iter
                 target = get_state_by_xpos(symmodel, ypos)
@@ -134,7 +150,7 @@ end
 # TODO: check where to place contsys.measnoise (for pathplanning, it is equal to zero)
 # So not critical for the moment...
 function compute_symmodel_from_controlsystem!(symmodel::SymbolicModel{N},
-        contsys::ControlSystemLinearized{N}) where N
+        contsys::SY.ControlSystemLinearized{N}) where N
     println("compute_symmodel_from_controlsystem! started")
     Xdom = symmodel.Xdom
     Udom = symmodel.Udom
@@ -149,26 +165,26 @@ function compute_symmodel_from_controlsystem!(symmodel::SymbolicModel{N},
     # Updates every 1 seconds
     # Commented because it changes the number of allocations
     # @showprogress 1 "Computing symbolic control system: " (
-    for upos in enum_pos(Udom)
+    for upos in DO.enum_pos(Udom)
         symbol = get_symbol_by_upos(symmodel, upos)
-        u = get_coord_by_pos(Udom.grid, upos)
+        u = DO.get_coord_by_pos(Udom.grid, upos)
         Fe = contsys.error_map(e, u, contsys.tstep)
         Fr = r .+ Fe
-        for xpos in enum_pos(Xdom)
+        for xpos in DO.enum_pos(Xdom)
             empty!(translist)
             source = get_state_by_xpos(symmodel, xpos)
-            x = get_coord_by_pos(Xdom.grid, xpos)
+            x = DO.get_coord_by_pos(Xdom.grid, xpos)
             Fx, DFx = contsys.linsys_map(x, _H_, u, tstep)
             A = inv(DFx)
             b = abs.(A)*Fr .+ 1.0
-            HP = CenteredPolyhedron(A, b)
+            HP = UT.CenteredPolyhedron(A, b)
             # TODO: can we improve abs.(DFx)*_ONE_?
             rad = contsys.measnoise + abs.(DFx)*_ONE_ .+ Fe
-            rectI = get_pos_lims_outer(Xdom.grid, HyperRectangle(Fx - rad, Fx + rad))
-            ypos_iter = Iterators.product(_ranges(rectI)...)
+            rectI = DO.get_pos_lims_outer(Xdom.grid, UT.HyperRectangle(Fx - rad, Fx + rad))
+            ypos_iter = Iterators.product(DO._ranges(rectI)...)
             allin = true
             for ypos in ypos_iter
-                y = get_coord_by_pos(Xdom.grid, ypos) - Fx
+                y = DO.get_coord_by_pos(Xdom.grid, ypos) - Fx
                 !(y in HP) && continue
                 if !(ypos in Xdom)
                     allin = false
