@@ -39,7 +39,7 @@ The purpose of this is to clone Dionysos at the location `~/.julia/dev/Dionysos`
 
 Switch to Source Control by pressing `Ctrl+Shift+G` then on the three horizontal dots on the top right of the left pane then "clone"
 then write `https://github.com/dionysos-dev/Dionysos.jl.git` and then select the folder `.julia/dev`.
-Then rename the created folder `~/.julia/dev/Dionysos` into `~/.julia/dev/Dionysos` using your file manager.
+Then rename the created folder `~/.julia/dev/Dionysos.jl` into `~/.julia/dev/Dionysos` using your file manager.
 
 ### Julia REPL
 
