@@ -4,6 +4,7 @@ using Test
 using Dionysos
 using LinearAlgebra
 using IntervalArithmetic
+using Plots
 const DI = Dionysos
 const UT = DI.Utils
 
@@ -158,8 +159,11 @@ end
         1.0 0.0
         1.0 0.0
     ]
-    c0 = [1.0; 1.0]
+    c0 = [1.0, 1.0]
     E0 = UT.DegenerateEllipsoid(U0, c0)
+
+    fig = plot(E0)
+    @test isa(fig, Plots.Plot{Plots.GRBackend})
 
     P0 = [
         2.0 0.0

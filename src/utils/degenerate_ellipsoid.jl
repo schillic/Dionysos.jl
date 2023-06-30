@@ -64,13 +64,15 @@ end
     v = nullspace(U' * U)
     v = v ./ norm(v)
     c = get_center(e)
+    v = reshape(v, length(c))
+
     # Define two points on the line segment
     p1 = c - v
     p2 = c + v
 
     xlims := (minimum([p1[1], p2[1]]) - 0.1, maximum([p1[1], p2[1]]) + 0.1)
     ylims := (minimum([p1[2], p2[2]]) - 0.1, maximum([p1[2], p2[2]]) + 0.1)
-    aspect_ratio := equal
+    aspect_ratio := :equal
 
     return DrawSegment(p1, p2)
 end
