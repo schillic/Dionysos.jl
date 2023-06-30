@@ -9,12 +9,24 @@ const DI = Dionysos
 const UT = DI.Utils
 
 @testset "EllipsoidBasics" begin
+
     c1 = [1.0; 1.0]
+
+    P_neg = [
+        -2.0 1.0
+        1.0 -4.0
+    ]
+    @test_throws ErrorException _ = UT.Ellipsoid(P_neg, c1)
+
     P1 = [
         0.4 -0.1
         -0.1 0.5
     ]
     E1 = UT.Ellipsoid(P1, c1)
+
+    fig = plot(E1)
+    @test isa(fig, Plots.Plot{Plots.GRBackend})
+
     c2 = [4.0; 1.0]
     P2 = [
         1.0 0.0
@@ -152,6 +164,13 @@ end
     ]
     E8 = UT.Ellipsoid(P1, c0)
     @test isapprox(UT.get_root(E8), P0, atol = 1e-6)
+
+    ############################################
+    A = I(2)
+    b = [0; 0]
+    E_trans = UT.transform(E8, A, b)
+    @test isapprox(E8.P, E_trans.P, atol = 1e-6)
+    @test isapprox(E8.c, E_trans.c, atol = 1e-6)
 end
 
 @testset "DegenerateEllipsoid" begin
