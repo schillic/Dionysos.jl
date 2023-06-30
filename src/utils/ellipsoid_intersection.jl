@@ -2,7 +2,7 @@ function Base.:∩(elli1::Ellipsoid, elli2::Ellipsoid)
     return intersect(elli1, elli2)
 end
 
-function intersect(elli1::Ellipsoid, elli2::Ellipsoid)
+function intersect(elli1::Ellipsoid, elli2::Ellipsoid; verbose = false)
     if elli1.c == elli2.c
         return true
     elseif (elli1.c ∈ elli2) || (elli2.c ∈ elli1)
@@ -27,7 +27,7 @@ function intersect(elli1::Ellipsoid, elli2::Ellipsoid)
             return true
         end
         (val, _) =
-            dbisection(polPos, dpolPos, ddpolPos; interval = [lb, ub], verbose = false) #, stopIfPositive=true)
+            dbisection(polPos, dpolPos, ddpolPos; interval = [lb, ub], verbose = verbose) #, stopIfPositive=true)
         g_star = -val
         return g_star <= 1
     end

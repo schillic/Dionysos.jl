@@ -5,6 +5,7 @@ using Dionysos
 using LinearAlgebra
 using IntervalArithmetic
 using Plots
+using Suppressor
 const DI = Dionysos
 const UT = DI.Utils
 
@@ -92,6 +93,11 @@ end
 
     @test UT.intersect(E1, E)
     @test UT.intersect(E, E1)
+
+    verbose_res = false
+    @suppress verbose_res = begin UT.intersect(E1, E; verbose = true) end
+    @test verbose_res
+
     E1scaled = UT.scale_for_noninclusion_contact_point(E1, E)
     err = norm(E1scaled.c - [2.4; 2.2]) + norm(E1scaled.P - [2.388 -0.597; -0.597 2.985])
     @test err <= 10e-4
@@ -142,6 +148,16 @@ end
         norm(E1scaled2.P - [0.073295 -0.018323; -0.01832382 0.0916196])
     @test err <= 10e-4
     @test E ∈ UT.Ellipsoid(E1scaled2.P * 0.99, E1scaled2.c)
+
+    #############################################
+    P_sphere = [
+        1.0 0.0
+        0.0 1.0
+    ]
+    c_sphere = [1.0, 1.0]
+    sphere1 = UT.Ellipsoid(P_sphere, c_sphere)
+    sphere2 = UT.Ellipsoid(P_sphere, c_sphere)
+    @test sphere1 ∈ sphere2
 
     #############################################
     Id = [
