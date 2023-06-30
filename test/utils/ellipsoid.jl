@@ -158,6 +158,7 @@ end
     sphere1 = UT.Ellipsoid(P_sphere, c_sphere)
     sphere2 = UT.Ellipsoid(P_sphere, c_sphere)
     @test sphere1 ∈ sphere2
+    @test sphere1 ∩ sphere2
 
     #############################################
     Id = [
