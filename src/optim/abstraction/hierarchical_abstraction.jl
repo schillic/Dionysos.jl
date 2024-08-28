@@ -699,7 +699,7 @@ function f3(i, prob)
     return new_path[i]
 end
 
-@recipe function f(prob::HierarchicalProblem; path = [], heuristic = false, fine = true)
+@recipe function f(prob::HierarchicalProblem; path = [], heuristic = false, fine = true, color1=:blue,color2=:blue,color3=:yellow,opacity1=0.5, opacity2=0.3, opacity3=0.2, opacityI=0.4, opacityT=0.5)
     @series begin
         color := :blue
         return prob.abstract_system.symmodel.Xdom
@@ -716,6 +716,7 @@ end
                 dims := [1, 2]
                 cost := true
                 lyap_fun := bell_fun
+                colorMapStylde := "Oranges"
                 return cell.heuristic_abstraction
             end
         end
@@ -727,6 +728,15 @@ end
             next = i == length(path) ? -1 : path[i + 1]
             local_optimizer = cell.optimizers[(prev, next)]
             @series begin
+                color1:=color1 
+                color2:=color2
+                color3:=color3
+                opacity1:=opacity1
+                opacity2:=opacity2
+                opacity3:=opacity3
+                opacityI:=opacityI
+                opacityT:=opacityT
+                colorI:=:red
                 return local_optimizer.lazy_search_problem
             end
         end

@@ -239,13 +239,14 @@ function compute_symmodel_from_controlsystem!(
     )
 end
 
-@recipe function f(symmodel::SymbolicModel; arrowsB = false, cost = false, lyap_fun = [])
+#Blues
+@recipe function f(symmodel::SymbolicModel; arrowsB = false, cost = false, lyap_fun = [], colorMapStylde="Blues")
     # Display the cells
     state_grid = symmodel.Xdom.grid
     if cost
         LyapMax = max(filter(isfinite, getfield.([lyap_fun...], :second))...)
-        colormap = Colors.colormap("Blues")
-        mycolorMap = UT.Colormap([0.0, LyapMax], colormap)
+        colormap = Colors.colormap(colorMapStylde)
+        mycolorMap = UT.Colormap([0.0, LyapMax], colormap)        
         cost_ordered =
             reverse(sort(hcat([(lyap, state) for (state, lyap) in lyap_fun]...); dims = 2))
         for (lyap, state) in cost_ordered

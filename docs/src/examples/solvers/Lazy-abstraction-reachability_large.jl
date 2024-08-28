@@ -96,7 +96,21 @@ function compute_reachable_set(rect::UT.HyperRectangle, concrete_system, Udom)
 end
 minimum_transition_cost(symmodel, contsys, source, target) = 1.0
 
-concrete_problem = SimpleProblem.problem()
+concrete_problem = SimpleProblem.problem(;
+    rectX = UT.HyperRectangle(SVector(0.0, 0.0), SVector(60.0, 60.0)),
+    obstacles = [UT.HyperRectangle(SVector(22.0, 21.0), SVector(25.0, 32.0))],
+    periodic = Int[],
+    periods = [30.0, 30.0],
+    T0 = [0.0, 0.0],
+    rectU = UT.HyperRectangle(SVector(-2.0, -2.0), SVector(2.0, 2.0)), # UT.HyperRectangle(SVector(-2.0, -2.0), SVector(2.0, 2.0)),
+    Uobstacles = [UT.HyperRectangle(SVector(-0.5, -0.5), SVector(0.5, 0.5))],
+    _I_ = UT.HyperRectangle(SVector(6.5, 6.5), SVector(7.5, 7.5)),
+    _T_ = UT.HyperRectangle(SVector(44.0, 44.0), SVector(49.0, 49.0)),
+    state_cost = UT.ZeroFunction(),
+    transition_cost = UT.ConstantControlFunction(0.5),
+    tstep = 0.8,
+    measnoise = SVector(0.0, 0.0),
+)
 concrete_system = concrete_problem.system
 
 hx = [0.5, 0.5]
@@ -121,7 +135,7 @@ AB.LazyAbstraction.set_optimizer!(
     Ugrid,
 )
 
-optimizer.param[:γ] = 2.0
+optimizer.param[:γ] = 0.6
 # Build the abstraction and solve the optimal control problem using A* algorithm
 using Suppressor
 # @suppress begin
@@ -164,92 +178,11 @@ println("Guaranteed cost:\t $(cost_bound)")
 println("True cost:\t\t $(cost_true)")
 
 
-################################################################################################
-################################################################################################
 
-
-xlims = (0, 30)
-ylims = (0, 30)
- 
- # Here we display the coordinate projection on the two first components of the state space along the trajectory.
-fig = plot(; aspect_ratio = :equal,xlims=xlims, ylims=ylims);
-plot!(framestyle=:box, grid=false, xtick=:auto, ytick=:auto, minorgrid=false, minorgridcolor=:grey, minorgridalpha=0.3,tickfontsize=9)
-# We display the concrete domain
-dark_grey = RGB(0.38, 0.38, 0.38) # RGB(0.83, 0.83, 0.83)  # Light grey color
-light_grey = RGB(0.6, 0.6, 0.6) # RGB(0.83, 0.83, 0.83)  # Light grey color
-#We display the concrete domain
-plot!(concrete_system.X; color = light_grey, opacity = 0.5);
-
-#We display the abstract domain
-plot!(abstract_system.Xdom; color = light_grey, opacity = 0.5);
-
-#We display the concrete specifications
-plot!(concrete_problem.initial_set; color = :green, opacity = 0.8);
-plot!(concrete_problem.target_set; dims = [1, 2], color = :red, opacity = 0.8);
-plot!(optimizer.lazy_search_problem;color1=dark_grey,color2=light_grey,color3=:blue,opacity1=0, opacity2=0, opacity3=0, opacityI=1.0, opacityT=1.0)
-
-#We display the concrete trajectory
-plot!(cost_control_trajectory; ms = 3.0, lw=2.2, arrows=false, color=:blue, markerstrokecolor=:blue)
-
-obstacles = [UT.HyperRectangle(SVector(15.0, 15.0), SVector(20.0, 20.0))]
-for obs in obstacles
-    plot!(obs; dims = [1, 2], color = :black,opacity=1.0)
-end
-savefig(fig, "lazy_simple_system_full_state_space.pdf")
-display(fig)
-
-################################################################################################
-################################################################################################
-
-# Display the abstraction and Lyapunov-like function
-xlims = (0, 30)
-ylims = (0, 30)
- 
- # Here we display the coordinate projection on the two first components of the state space along the trajectory.
-fig = plot(; aspect_ratio = :equal,xlims=xlims, ylims=ylims);
-plot!(framestyle=:box, grid=false, xtick=:auto, ytick=:auto, minorgrid=false, minorgridcolor=:grey, minorgridalpha=0.3,tickfontsize=9)
-plot!(concrete_system.X; color =:black,opacity = 0.85, legend=:false);
-plot!(
-    abstract_system;
-    dims = [1, 2],
-    cost = true,
-    lyap_fun = optimizer.lyap_fun,
-    label = false,
-)
-savefig(fig, "lazy_simple_system_lyapunov_function.pdf")
-display(fig)
-
-################################################################################################
-################################################################################################
-
-# Display the results of the A* algorithm
-## Display the Bellman-like value function (heuristic)
- xlims = (0, 30)
- ylims = (0, 30)
-  
-  # Here we display the coordinate projection on the two first components of the state space along the trajectory.
- fig = plot(; aspect_ratio = :equal,xlims=xlims, ylims=ylims);
- plot!(framestyle=:box, grid=false, xtick=:auto, ytick=:auto, minorgrid=false, minorgridcolor=:grey, minorgridalpha=0.3,tickfontsize=9)
- # We display the concrete domain
- dark_grey = RGB(0.38, 0.38, 0.38) # RGB(0.83, 0.83, 0.83)  # Light grey color
- light_grey = RGB(0.6, 0.6, 0.6) # RGB(0.83, 0.83, 0.83)  # Light grey color
-plot!(
-    optimizer.abstract_system_heuristic;
-    arrowsB = false,
-    dims = [1, 2],
-    cost = true,
-    lyap_fun = optimizer.bell_fun,
-    label = false,
-)
-
-display(fig)
-
-################################################################################################
-################################################################################################
 
 # # Display the results of the A* algorithm
-xlims = (0, 30)
-ylims = (0, 30)
+xlims = (0, 60)
+ylims = (0, 60)
  
  # Here we display the coordinate projection on the two first components of the state space along the trajectory.
 fig = plot(; aspect_ratio = :equal,xlims=xlims, ylims=ylims);
@@ -275,13 +208,12 @@ plot!(concrete_problem.target_set; color = :red, opacity = 1.0);
 plot!(concrete_problem.target_set; dims = [1, 2], color = :red, opacity = 0.6);
 plot!(optimizer.lazy_search_problem;color1=dark_grey,color2=light_grey,color3=super_light_grey,opacity1=1.0, opacity2=1.0, opacity3=1.0, opacityI=1.0, opacityT=1.0)
 plot!(concrete_problem.initial_set; color = :green, opacity = 1.0);
-plot!(cost_control_trajectory; ms = 3.0, lw=2.2, arrows=false, color=:blue, markerstrokecolor=:blue)
 
 
-obstacles = [UT.HyperRectangle(SVector(15.0, 15.0), SVector(20.0, 20.0))]
+obstacles = [UT.HyperRectangle(SVector(22.0, 21.0), SVector(25.0, 32.0))]
 for obs in obstacles
     plot!(obs; dims = [1, 2], color = :black,opacity=1.0)
 end
-
-savefig(fig, "lazy_simple_system_abstraction.pdf")
+plot!(cost_control_trajectory; ms = 2.0, lw=1.5, arrows=false, color=:blue, markerstrokecolor=:blue)
+savefig(fig, "lazy_simple_system_abstraction_large.pdf")
 display(fig)

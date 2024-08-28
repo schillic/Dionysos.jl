@@ -101,8 +101,17 @@ end
             reverse(sort(hcat([(lyap, state) for (state, lyap) in lyap_fun]...); dims = 2))
         for (lyap, state) in cost_ordered
             pos = get_xpos_by_state(symmodel, state)
+            # @series begin
+            #     lyap ≠ Inf ? color := UT.get_color(mycolorMap, lyap) : color := :black opacity := 0.85
+            #     return grid, pos
+            # end
             @series begin
-                lyap ≠ Inf ? color := UT.get_color(mycolorMap, lyap) : color := :yellow
+                if lyap ≠ Inf
+                    color := UT.get_color(mycolorMap, lyap)
+                else
+                    opacity := 0.0
+                    color := :black
+                end
                 return grid, pos
             end
         end

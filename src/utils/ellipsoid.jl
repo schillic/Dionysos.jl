@@ -161,7 +161,7 @@ end
     else
         opacity := 1.0
         label := ""
-        lw := 1
+        lw := 1.0
         lc := :black
         Pvar = get_shape(e)
         Qvar = inv(Pvar)

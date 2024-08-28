@@ -72,53 +72,109 @@ nstep = 300
 x0 = SVector(1.2, 5.6)
 control_trajectory =
     ST.get_closed_loop_trajectory(concrete_system.f, concrete_controller, x0, nstep)
+l = 0
+safe = 0
+ # Define plot limits
+    xlims = (1.15, 1.55)
+    ylims = (5.45, 5.85)
+    xticks = 1.15:0.1:1.55  # Major ticks from 0 to 12 at every 2 units
+    yticks = 5.45:0.1:5.85  # Major ticks from 0 to 1.2 at every 0.2 units
+    
+    # Here we display the coordinate projection on the two first components of the state space along the trajectory.
+    fig = plot(; aspect_ratio = :equal,xlims=xlims, ylims=ylims);
+    plot!(framestyle=:box, grid=false, xtick=xticks, ytick=yticks, minorgrid=false, minorgridcolor=:grey, minorgridalpha=0.3,tickfontsize=9)
+    # We display the concrete domain
+    light_grey = RGB(0.6, 0.6, 0.6) # RGB(0.83, 0.83, 0.83)  # Light grey color
+    plot!(concrete_system.X; color = light_grey, opacity = 0.5);
+    # We display the concrete trajectory
+    plot!(control_trajectory; ms = 1.2, lw=0.3, arrows=false, color=:blue, markerstrokecolor=:blue)
+    abstract_system = MOI.get(optimizer, MOI.RawOptimizerAttribute("abstract_system"))
+    grid = abstract_system.Xdom.grid
+    for xpos in DO.enum_pos(abstract_system.Xdom)
+        source = SY.get_state_by_xpos(abstract_system, xpos)
+        symbollist = UT.fix_and_eliminate_first(abstract_controller, source)
+        if isempty(symbollist)
+            global l = l+1
+            if l <= 45312
+                plot!(grid, xpos; color=:black,opacity=0.2)
+            end
+        else
+            global safe = safe+1
+        end
+    end
+    println(l)
+    println(safe)
+    println("save the fig")
+    savefig(fig, "safety_problem.pdf")
+    display(fig)
 
-fig = plot(; aspect_ratio = :equal);
-plot!(concrete_system.X);
-plot!(control_trajectory)
+# # # Example: DC-DC converter solved by [Uniform grid abstraction] (https://github.com/dionysos-dev/Dionysos.jl/blob/master/docs/src/manual/manual.md#solvers) by exploiting the incremental stability of the system.
+# # ### Definition of the system
+# # we can import the module containing the DCDC problem like this 
+# include(joinpath(dirname(dirname(pathof(Dionysos))), "problems", "dc_dc.jl"))
 
-# # Example: DC-DC converter solved by [Uniform grid abstraction] (https://github.com/dionysos-dev/Dionysos.jl/blob/master/docs/src/manual/manual.md#solvers) by exploiting the incremental stability of the system.
-# ### Definition of the system
-# we can import the module containing the DCDC problem like this 
-include(joinpath(dirname(dirname(pathof(Dionysos))), "problems", "dc_dc.jl"))
+# # and we can instantiate the DC system with the provided system
+# concrete_problem = DCDC.problem(;)#approx_mode = DCDC.DELTA_GAS)
+# concrete_system = concrete_problem.system
 
-# and we can instantiate the DC system with the provided system
-concrete_problem = DCDC.problem(; approx_mode = DCDC.DELTA_GAS)
-concrete_system = concrete_problem.system
+# origin = SVector(0.0, 0.0)
+# η = (2 / 4.0) * 10^(-3)
 
-origin = SVector(0.0, 0.0)
-η = (2 / 4.0) * 10^(-3)
+# # Note: In the following, `P` and `ϵ` are computed by hand, but their computation is not crucial since they only affect the visualization of the abstraction. See https://github.com/dionysos-dev/Dionysos.jl/issues/345
+# ϵ = 0.1 * 0.01
+# P = SMatrix{2, 2}(1.0224, 0.0084, 0.0084, 1.0031)
+# state_grid = DO.GridEllipsoidalRectangular(origin, SVector(η, η), P / ϵ, concrete_system.X)
 
-# Note: In the following, `P` and `ϵ` are computed by hand, but their computation is not crucial since they only affect the visualization of the abstraction. See https://github.com/dionysos-dev/Dionysos.jl/issues/345
-ϵ = 0.1 * 0.01
-P = SMatrix{2, 2}(1.0224, 0.0084, 0.0084, 1.0031)
-state_grid = DO.GridEllipsoidalRectangular(origin, SVector(η, η), P / ϵ, concrete_system.X)
+# u0 = SVector(1)
+# hu = SVector(1)
+# input_grid = DO.GridFree(u0, hu)
 
-u0 = SVector(1)
-hu = SVector(1)
-input_grid = DO.GridFree(u0, hu)
+# optimizer = MOI.instantiate(AB.UniformGridAbstraction.Optimizer)
+# MOI.set(optimizer, MOI.RawOptimizerAttribute("concrete_problem"), concrete_problem)
+# MOI.set(optimizer, MOI.RawOptimizerAttribute("state_grid"), state_grid)
+# MOI.set(optimizer, MOI.RawOptimizerAttribute("input_grid"), input_grid)
+# MOI.set(optimizer, MOI.RawOptimizerAttribute("δGAS"), true)
+# MOI.optimize!(optimizer)
 
-optimizer = MOI.instantiate(AB.UniformGridAbstraction.Optimizer)
-MOI.set(optimizer, MOI.RawOptimizerAttribute("concrete_problem"), concrete_problem)
-MOI.set(optimizer, MOI.RawOptimizerAttribute("state_grid"), state_grid)
-MOI.set(optimizer, MOI.RawOptimizerAttribute("input_grid"), input_grid)
-MOI.set(optimizer, MOI.RawOptimizerAttribute("δGAS"), true)
-MOI.optimize!(optimizer)
+# abstract_controller = MOI.get(optimizer, MOI.RawOptimizerAttribute("abstract_controller"))
+# concrete_controller = MOI.get(optimizer, MOI.RawOptimizerAttribute("concrete_controller"))
 
-abstract_controller = MOI.get(optimizer, MOI.RawOptimizerAttribute("abstract_controller"))
-concrete_controller = MOI.get(optimizer, MOI.RawOptimizerAttribute("concrete_controller"))
+# # ### Trajectory display
+# # We choose the number of steps `nsteps` for the sampled system, i.e. the total elapsed time: `nstep`*`tstep`
+# # as well as the true initial state `x0` which is contained in the initial state-space defined previously.
+# nstep = 300
+# x0 = SVector(1.2, 5.6)
+# control_trajectory =
+#     ST.get_closed_loop_trajectory(concrete_system.f, concrete_controller, x0, nstep)
 
-# ### Trajectory display
-# We choose the number of steps `nsteps` for the sampled system, i.e. the total elapsed time: `nstep`*`tstep`
-# as well as the true initial state `x0` which is contained in the initial state-space defined previously.
-nstep = 300
-x0 = SVector(1.2, 5.6)
-control_trajectory =
-    ST.get_closed_loop_trajectory(concrete_system.f, concrete_controller, x0, nstep)
+# # Define plot limits
+# xlims = (1.15, 1.55)
+# ylims = (5.45, 5.85)
+# xticks = 1.15:0.1:1.55  # Major ticks from 0 to 12 at every 2 units
+# yticks = 5.45:0.1:5.85  # Major ticks from 0 to 1.2 at every 0.2 units
 
-fig = plot(; aspect_ratio = :equal);
-plot!(concrete_system.X);
-plot!(control_trajectory)
+# # Here we display the coordinate projection on the two first components of the state space along the trajectory.
+# fig = plot(; aspect_ratio = :equal,xlims=xlims, ylims=ylims);
+# plot!(framestyle=:box, grid=false, xtick=xticks, ytick=yticks, minorgrid=false, minorgridcolor=:grey, minorgridalpha=0.3,tickfontsize=9)
+# # We display the concrete domain
+# light_grey = RGB(0.6, 0.6, 0.6) # RGB(0.83, 0.83, 0.83)  # Light grey color
+# plot!(concrete_system.X; color = light_grey, opacity = 0.5);
+# # We display the concrete trajectory
+# plot!(control_trajectory; ms = 1.2, lw=0.3, arrows=false, color=:blue, markerstrokecolor=:blue)
+
+# grid = abstract_system.Xdom.grid
+# state_grid = DO.GridFree(x0, hx)
+# println(state_grid)
+# for xpos in DO.enum_pos(abstract_system.Xdom)
+#     println(xpos)
+#     source = SY.get_state_by_xpos(abstract_system, xpos)
+#     symbollist = UT.fix_and_eliminate_first(abstract_controller, source)
+#     if isempty(symbollist)
+#         plot!(state_grid, xpos; color=:black,opacity=0.2)
+#     end
+# end
+# savefig(fig, "safety_problem.pdf")
+# display(fig)
 
 # ### References
 # 1. A. Girard, G. Pola and P. Tabuada, "Approximately Bisimilar Symbolic Models for Incrementally Stable Switched Systems," in IEEE Transactions on Automatic Control, vol. 55, no. 1, pp. 116-126, Jan. 2010.

@@ -1,7 +1,7 @@
 using StaticArrays, LinearAlgebra, Random, IntervalArithmetic
 using MathematicalSystems, HybridSystems
 using JuMP, Mosek, MosekTools
-using Plots, Colors
+using Plots, Colors, LaTeXStrings
 using Test
 Random.seed!(0)
 
@@ -59,7 +59,7 @@ k1 = 1
 k2 = 1
 RRTstar = false
 continues = false
-maxIter = 100
+maxIter = 45
 
 optimizer = MOI.instantiate(AB.LazyEllipsoidsAbstraction.Optimizer)
 AB.LazyEllipsoidsAbstraction.set_optimizer!(

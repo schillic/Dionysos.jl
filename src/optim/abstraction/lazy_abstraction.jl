@@ -364,7 +364,11 @@ function build_concrete_bell_fun(abstract_system_heuristic, abstract_bell_fun)
     return concrete_bell_fun
 end
 
+count_evaluation_F2 = 0
+count_evaluation_F2_heuristic = 0
+
 function MOI.optimize!(optimizer::Optimizer)
+    global count_evaluation_F2 = 0
     t_ref = time()
 
     concrete_problem = optimizer.concrete_problem
@@ -411,6 +415,7 @@ function MOI.optimize!(optimizer::Optimizer)
     optimizer.solved = true
 
     optimizer.solve_time_sec = time() - t_ref
+    println(count_evaluation_F2)
     return
 end
 
@@ -596,6 +601,7 @@ function update_abstraction!(successors, problem::LazySearchProblem, source)
                     if problem.transitions_previously_added[cell, symbol] != -1
                         n_trans = problem.transitions_previously_added[cell, symbol]
                     else
+                        global count_evaluation_F2 += 1
                         ns1 = abstract_system.autom.nstates
                         n_trans = transitions!(
                             cell,
@@ -633,7 +639,7 @@ function UT.successor(problem::LazySearchProblem, state::State)
     return successors
 end
 
-@recipe function f(problem::LazySearchProblem; dims = [1, 2])
+@recipe function f(problem::LazySearchProblem; dims = [1, 2], color1=:blue,color2=:blue,color3=:yellow,opacity1=0.5, opacity2=0.3, opacity3=0.2, opacityI=0.4, opacityT=0.5,colorI=:green)
     targetlist = [init.source for init in problem.initial]
     initlist = [goal.source for goal in problem.goal]
     contr = problem.contr
@@ -649,13 +655,13 @@ end
             if !haskey(dict, pos[dims])
                 dict[pos[dims]] = true
                 @series begin
-                    opacity := 0.2
-                    color := :yellow
+                    opacity := opacity3
+                    color := color3
                     return grid, pos
                 end
             end
         end
-    end
+    end 
 
     # controllable state
     dict = Dict{NTuple{2, Int}, Any}()
@@ -664,8 +670,8 @@ end
         if !haskey(dict, pos[dims])
             dict[pos[dims]] = true
             @series begin
-                opacity := 0.3
-                color := :blue
+                opacity := opacity2
+                color := color2
                 return grid, pos
             end
         end
@@ -678,8 +684,8 @@ end
         if !haskey(dict, pos[dims])
             dict[pos[dims]] = true
             @series begin
-                opacity := 0.5
-                color := :blue
+                opacity := opacity1
+                color := color1
                 return grid, pos
             end
         end
@@ -692,8 +698,8 @@ end
         if !haskey(dict, pos[dims])
             dict[pos[dims]] = true
             @series begin
-                opacity := 0.4
-                color := :green
+                opacity := opacityI
+                color := colorI
                 return grid, pos
             end
         end
@@ -706,7 +712,7 @@ end
         if !haskey(dict, pos[dims])
             dict[pos[dims]] = true
             @series begin
-                opacity := 0.5
+                opacity := opacityT
                 color := :red
                 return grid, pos
             end

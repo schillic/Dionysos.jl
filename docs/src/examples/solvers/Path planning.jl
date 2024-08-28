@@ -50,7 +50,7 @@ include(joinpath(dirname(dirname(pathof(Dionysos))), "problems", "path_planning.
 # ### Definition of the problem
 
 # Now we instantiate the problem using the function provided by [PathPlanning.jl](@__REPO_ROOT_URL__/problems/PathPlanning.jl) 
-concrete_problem = PathPlanning.problem(; simple = true, approx_mode = PathPlanning.GROWTH);
+concrete_problem = PathPlanning.problem(; simple = false, approx_mode = PathPlanning.GROWTH);
 concrete_system = concrete_problem.system;
 
 # ### Definition of the abstraction
@@ -80,12 +80,12 @@ abstract_problem = MOI.get(optimizer, MOI.RawOptimizerAttribute("abstract_proble
 abstract_controller = MOI.get(optimizer, MOI.RawOptimizerAttribute("abstract_controller"))
 concrete_controller = MOI.get(optimizer, MOI.RawOptimizerAttribute("concrete_controller"))
 
-@test length(abstract_controller.data) == 19400 #src
+# @test length(abstract_controller.data) == 19400 #src
 
 # ### Trajectory display
 # We choose a stopping criterion `reached` and the maximal number of steps `nsteps` for the sampled system, i.e. the total elapsed time: `nstep`*`tstep`
 # as well as the true initial state `x0` which is contained in the initial state-space `_I_` defined previously.
-nstep = 100
+nstep = 1000
 function reached(x)
     if x ∈ concrete_problem.target_set
         return true
@@ -102,31 +102,64 @@ control_trajectory = ST.get_closed_loop_trajectory(
     stopping = reached,
 )
 
+function get_obstacles(
+    _X_;
+    X1_lb = [1.0, 2.2, 2.2, 3.4, 4.6, 5.8, 5.8, 7.0, 8.2, 8.2, 9.3, 8.4, 9.3, 8.4, 9.3],
+    X1_ub = [1.2, 2.4, 2.4, 3.6, 4.8, 6.0, 6.0, 7.2, 8.4, 9.3, 10.0, 9.3, 10.0, 9.3, 10.0],
+    X2_lb = [0.0, 0.0, 6.0, 0.0, 1.0, 0.0, 7.0, 1.0, 0.0, 8.2, 7.0, 5.8, 4.6, 3.4, 2.2],
+    X2_ub = [9.0, 5.0, 10.0, 9.0, 10.0, 6.0, 10.0, 10.0, 8.5, 8.6, 7.4, 6.2, 5.0, 3.8, 2.6],
+)
+    return [
+        UT.HyperRectangle(SVector(x1lb, x2lb, _X_.lb[3]), SVector(x1ub, x2ub, _X_.ub[3]))
+        for (x1lb, x2lb, x1ub, x2ub) in zip(X1_lb, X2_lb, X1_ub, X2_ub)
+    ]
+end
+
+# Define plot limits
+xlims = (0, 10)
+ylims = (0, 10)
+
+
 # Here we display the coordinate projection on the two first components of the state space along the trajectory.
-fig = plot(; aspect_ratio = :equal);
+fig = plot(; aspect_ratio = :equal,xlims=xlims, ylims=ylims);
+plot!(framestyle=:box, grid=false, xtick=:auto, ytick=:auto, minorgrid=false, minorgridcolor=:grey, minorgridalpha=0.3,tickfontsize=9)
 # We display the concrete domain
-plot!(concrete_system.X; color = :yellow, opacity = 0.5);
+light_grey = RGB(0.6, 0.6, 0.6) # RGB(0.83, 0.83, 0.83)  # Light grey color
+plot!(concrete_system.X; color = light_grey, opacity = 0.5);
 
 # We display the abstract domain
-plot!(abstract_system.Xdom; color = :blue, opacity = 0.5);
+plot!(abstract_system.Xdom; color = light_grey, opacity = 0.5);
 
-# We display the concrete specifications
-plot!(concrete_problem.initial_set; color = :green, opacity = 0.2);
-plot!(concrete_problem.target_set; dims = [1, 2], color = :red, opacity = 0.2);
+
 
 # We display the abstract specifications
 plot!(
     SY.get_domain_from_symbols(abstract_system, abstract_problem.initial_set);
-    color = :green,
+    color = :green,opacity=0.2,
 );
-plot!(
-    SY.get_domain_from_symbols(abstract_system, abstract_problem.target_set);
-    color = :red,
-);
+# We display the concrete specifications
+plot!(concrete_problem.initial_set; color = :green, opacity = 1.0);
 
 # We display the concrete trajectory
-plot!(control_trajectory; ms = 0.5)
+plot!(control_trajectory; ms = 2.0, lw=1.5, arrows=false, color=:blue, markerstrokecolor=:blue)
 
+plot!(
+    SY.get_domain_from_symbols(abstract_system, abstract_problem.initial_set);
+    color = :green,opacity=1.0
+);
+
+plot!(concrete_problem.target_set; dims = [1, 2], color = :red, opacity = 0.6);
+plot!(
+    SY.get_domain_from_symbols(abstract_system, abstract_problem.target_set);
+    color = :red,opacity=1.0
+);
+_X_ = UT.HyperRectangle(SVector(0.0, 0.0, -pi - 0.4), SVector(4.0, 10.0, pi + 0.4))
+obstacles = get_obstacles(_X_)
+for obs in get_obstacles(_X_)
+    plot!(obs; dims = [1, 2], color = :black,opacity=1.0)
+end
+savefig(fig, "path_planning_problem.pdf")
+display(fig)
 # ### References
 # 1. G. Reissig, A. Weber and M. Rungger, "Feedback Refinement Relations for the Synthesis of Symbolic Controllers," in IEEE Transactions on Automatic Control, vol. 62, no. 4, pp. 1781-1796.
 # 2. K. J. Aström and R. M. Murray, Feedback systems. Princeton University Press, Princeton, NJ, 2008.

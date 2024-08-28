@@ -33,7 +33,7 @@ MOI.set(sdp_opt, MOI.RawOptimizerAttribute("fallback"), FALLBACK_URL)
 maxδx = 100
 maxδu = 10 * 2
 λ = 0.01
-k1 = 1
+k1 = 1 # 4
 k2 = 1
 RRTstar = false
 continues = false
@@ -123,21 +123,20 @@ title!("Abstractions");
 plot!(abstract_system; arrowsB = true, cost = false)
 
 # # Display the Lyapunov function and the trajectory
-fig = plot(;
-    aspect_ratio = :equal,
-    xtickfontsize = 10,
-    ytickfontsize = 10,
-    guidefontsize = 16,
-    titlefontsize = 14,
-);
-xlabel!("\$x_1\$");
-ylabel!("\$x_2\$");
-title!("Trajectory and Lyapunov-like Fun.");
-
+xlims = (-20, 25)
+ylims = (-20, 25)
+ # Here we display the coordinate projection on the two first components of the state space along the trajectory.
+fig = plot(; aspect_ratio = :equal,xlims=xlims, ylims=ylims);
+plot!(framestyle=:box, grid=false, xtick=:auto, ytick=:auto, minorgrid=false, minorgridcolor=:grey, minorgridalpha=0.3,tickfontsize=11)
+# xlabel!("\$x_1\$");
+# ylabel!("\$x_2\$");
 for obs in concrete_system.obstacles
     plot!(obs; color = :black)
 end
-plot!(abstract_system; arrowsB = false, cost = true);
-plot!(cost_control_trajectory; color = :black)
-
-@test cost_true <= cost_bound             #src
+plot!(abstract_system; arrowsB = true, cost = true);
+plot!(concrete_problem.target_set; color = :red, label = false)
+plot!(cost_control_trajectory; color = :blue)
+plot!(concrete_problem.initial_set; color = :green, label = false);
+savefig(fig, "dionysos_lazy_ellipsoid.pdf")
+display(fig)
+# @test cost_true <= cost_bound             #src

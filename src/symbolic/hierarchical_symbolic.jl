@@ -50,6 +50,7 @@ end
     arrowsB = true,
     cost = false,
     lyap_fun = [],
+    colorMapStylde= "Oranges",
 )
     @series begin
         arrowsB := false
@@ -57,6 +58,7 @@ end
     end
     for (state, sub_symmodel) in hierarchical_symmodel.sub_symmodels
         @series begin
+            colorMapStylde := colorMapStylde
             sub_symmodel
         end
     end

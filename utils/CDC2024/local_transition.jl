@@ -2,6 +2,7 @@ using StaticArrays, LinearAlgebra, IntervalArithmetic, Random
 using MathematicalSystems, HybridSystems
 using JuMP, Mosek, MosekTools
 using Plots, Colors
+using LaTeXStrings
 using Test
 Random.seed!(0)
 
@@ -30,7 +31,7 @@ end
 include("../../problems/non_linear.jl")
 const FALLBACK_URL = "mosek://solve.mosek.com:30080"
 
-function test_backward_transition(Wbound, E2, xnew, U, λ, ρ)
+function test_backward_transition(Wbound, E2, xnew, U, λ, ρ;param=0)
     W = UT.HyperRectangle(SVector(-Wbound, -Wbound), SVector(Wbound, Wbound))
     problem = NonLinear.problem(; U = U, W = W, noise = true, μ = ρ)
     sys = problem.system
@@ -104,26 +105,26 @@ function test_backward_transition(Wbound, E2, xnew, U, λ, ρ)
     )
 
     # Display the initial set, target set and the image of the initial ellipsoid under the linear model approximation
-    fig1 = plot(; aspect_ratio = :equal)
-    plot!(fig1, E1; color = :green)
-    plot!(fig1, E2; color = :red)
+    # fig1 = plot(; aspect_ratio = :equal)
+    # plot!(fig1, E1; color = :green)
+    # plot!(fig1, E2; color = :red)
 
-    ST.plot_transitions!(E1, sys.f_eval, cont.c_eval, sys.W; N = 300)
-    plot!(fig1, ETilde; color = :blue)
-    display(fig1)
+    # ST.plot_transitions!(E1, sys.f_eval, cont.c_eval, sys.W; N = 300)
+    # plot!(fig1, ETilde; color = :blue)
+    # display(fig1)
 
-    # Display the data-driven test of the controller
-    fig2 = plot(; aspect_ratio = :equal)
-    ST.plot_check_feasibility!(
-        E1,
-        E2,
-        sys.f_eval,
-        cont.c_eval,
-        sys.W;
-        dims = [1, 2],
-        N = 500,
-    )
-    display(fig2)
+    # # Display the data-driven test of the controller
+    # fig2 = plot(; aspect_ratio = :equal)
+    # ST.plot_check_feasibility!(
+    #     E1,
+    #     E2,
+    #     sys.f_eval,
+    #     cont.c_eval,
+    #     sys.W;
+    #     dims = [1, 2],
+    #     N = 500,
+    # )
+    # display(fig2)
 
     # Display the cost of the controller
     fig3 = plot(;
@@ -185,10 +186,35 @@ function test_backward_transition(Wbound, E2, xnew, U, λ, ρ)
     plot!(fig4, U_used; color = :green, label = "Input set used")
     display(fig4)
 
-    savefig(fig1, "fig1.png")
-    savefig(fig2, "fig2.png")
-    savefig(fig3, "fig3.png")
-    savefig(fig4, "fig4.png")
+    # savefig(fig1, "fig1.pdf")
+    # savefig(fig2, "fig2.pdf")
+    if param==1
+        annotate!(fig3,1.5, 3.5, text(L"\xi", 26, :black)) 
+        annotate!(fig3,4.8, 5.4, text(L"\xi", 26, :black))
+        annotate!(fig3,5.25, 5.7, text(L"+", 16, :black))
+        savefig(fig3, "fig1-1.pdf")
+        annotate!(fig4,0.0, 0.0, text(L"\mathcal{U}_1", 29, :black))
+        annotate!(fig4,3.05, 2.5, text(L"\widetilde{\mathcal{U}}", 26, :black))
+        savefig(fig4, "fig1-2.pdf")
+    end
+    if param==2
+        annotate!(fig3,1.4, 2.4, text(L"\xi", 26, :black))
+        annotate!(fig3,4.8, 5.4, text(L"\xi", 26, :black))
+        annotate!(fig3,5.25, 5.7, text(L"+", 16, :black))
+        savefig(fig3, "fig2-1.pdf")
+        annotate!(fig4,0.0, 0.0, text(L"\mathcal{U}_1", 29, :black))
+        annotate!(fig4,1.8, 2.2, text(L"\widetilde{\mathcal{U}}", 26, :black))
+        savefig(fig4, "fig2-2.pdf")
+    end
+    if param==3
+        annotate!(fig3,1.7, 2.6, text(L"\xi", 26, :black))
+        annotate!(fig3,4.8, 5.4, text(L"\xi", 26, :black))
+        annotate!(fig3,5.25, 5.7, text(L"+", 16, :black))
+        savefig(fig3, "fig3-1.pdf")
+        annotate!(fig4,0.0, 0.0, text(L"\mathcal{U}_1", 29, :black))
+        annotate!(fig4,3.2, 2.6, text(L"\widetilde{\mathcal{U}}", 25, :black))
+        savefig(fig4, "fig3-2.pdf")
+    end
     return
 end
 
@@ -199,20 +225,23 @@ U = UT.IntersectionSet([
     UT.HyperRectangle(SVector(-4.0, -5.0), SVector(4.0, 5.0)),
 ])
 xnew = SVector{2, Float64}([1.0; 1.0])
-#fig 1
+# fig 1
 ρ = 0.0005
 Wbound = 0.1
 λ = 0.01
-test_backward_transition(Wbound, E2, xnew, U, λ, ρ)
+param = 1
+test_backward_transition(Wbound, E2, xnew, U, λ, ρ;param=param)
 
-#fig 2
+# fig 2
 ρ = 0.0005
 Wbound = 0.1
 λ = 0.3
-test_backward_transition(Wbound, E2, xnew, U, λ, ρ)
+param = 2
+test_backward_transition(Wbound, E2, xnew, U, λ, ρ,param=param)
 
-# #fig 3
+# # #fig 3
 ρ = 0.001
 Wbound = 0.15
 λ = 0.01
-test_backward_transition(Wbound, E2, xnew, U, λ, ρ)
+param = 3
+test_backward_transition(Wbound, E2, xnew, U, λ, ρ,param=param)
